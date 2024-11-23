@@ -94,7 +94,7 @@ python scripts/demo.py --video_path <your_frame_directory> --txt_path <path_to_f
 
 SAMURAI is built on top of [SAM 2](https://github.com/facebookresearch/sam2?tab=readme-ov-file) by Meta FAIR.
 
-The VOT evaluation code is modifed from [VOT Toolkit](https://github.com/votchallenge/toolkit) by Luka Čehovin Zajc.
+The VOT evaluation code is modified from [VOT Toolkit](https://github.com/votchallenge/toolkit) by Luka Čehovin Zajc.
 
 ## Citation
 
