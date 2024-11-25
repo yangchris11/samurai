@@ -161,3 +161,6 @@ visualization/*
 
 # .DS_Store
 .DS_Store
+
+# For Testing
+demo/
