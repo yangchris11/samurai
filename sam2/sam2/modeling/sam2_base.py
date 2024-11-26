@@ -418,7 +418,7 @@ class SAM2Base(torch.nn.Module):
         sam_output_token = sam_output_tokens[:, 0]
         kf_ious = None
         if multimask_output and self.samurai_mode:
-            if self.kf_mean is None and self.kf_covariance is None or self.stable_frames == 0:
+            if self.stable_frames < self.stable_frames_threshold:
                 best_iou_inds = torch.argmax(ious, dim=-1)
                 batch_inds = torch.arange(B, device=device)
                 low_res_masks = low_res_multimasks[batch_inds, best_iou_inds].unsqueeze(1)
@@ -430,31 +430,20 @@ class SAM2Base(torch.nn.Module):
                     y_min, x_min = non_zero_indices.min(dim=0).values
                     y_max, x_max = non_zero_indices.max(dim=0).values
                     high_res_bbox = [x_min.item(), y_min.item(), x_max.item(), y_max.item()]
-                self.kf_mean, self.kf_covariance = self.kf.initiate(self.kf.xyxy_to_xyah(high_res_bbox))
-                if sam_output_tokens.size(1) > 1:
-                    sam_output_token = sam_output_tokens[batch_inds, best_iou_inds]
-                self.frame_cnt += 1
-                self.stable_frames += 1
-            elif self.stable_frames < self.stable_frames_threshold:
-                self.kf_mean, self.kf_covariance = self.kf.predict(self.kf_mean, self.kf_covariance)
-                best_iou_inds = torch.argmax(ious, dim=-1)
-                batch_inds = torch.arange(B, device=device)
-                low_res_masks = low_res_multimasks[batch_inds, best_iou_inds].unsqueeze(1)
-                high_res_masks = high_res_multimasks[batch_inds, best_iou_inds].unsqueeze(1)
-                non_zero_indices = torch.argwhere(high_res_masks[0][0] > 0.0)
-                if len(non_zero_indices) == 0:
-                    high_res_bbox = [0, 0, 0, 0]
-                else:
-                    y_min, x_min = non_zero_indices.min(dim=0).values
-                    y_max, x_max = non_zero_indices.max(dim=0).values
-                    high_res_bbox = [x_min.item(), y_min.item(), x_max.item(), y_max.item()]
-                if ious[0][best_iou_inds] > self.stable_ious_threshold:
-                    self.kf_mean, self.kf_covariance = self.kf.update(self.kf_mean, self.kf_covariance, self.kf.xyxy_to_xyah(high_res_bbox))
+                if self.kf_mean is None and self.kf_covariance is None:
+                    self.kf_mean, self.kf_covariance = self.kf.initiate(self.kf.xyxy_to_xyah(high_res_bbox))
+                    # if sam_output_tokens.size(1) > 1:
+                    #     sam_output_token = sam_output_tokens[batch_inds, best_iou_inds]
+                    # self.frame_cnt += 1
                     self.stable_frames += 1
                 else:
-                    self.stable_frames = 0
-                if sam_output_tokens.size(1) > 1:
-                    sam_output_token = sam_output_tokens[batch_inds, best_iou_inds]
+                    self.kf_mean, self.kf_covariance = self.kf.predict(self.kf_mean, self.kf_covariance)
+                    if ious[0][best_iou_inds] > self.stable_ious_threshold:
+                        self.kf_mean, self.kf_covariance = self.kf.update(self.kf_mean, self.kf_covariance, self.kf.xyxy_to_xyah(high_res_bbox))
+                        self.stable_frames += 1
+                    else:
+                        self.kf_mean, self.kf_covariance = self.kf.initiate(self.kf.xyxy_to_xyah(high_res_bbox))
+                        self.stable_frames = 1
                 self.frame_cnt += 1
             else:
                 self.kf_mean, self.kf_covariance = self.kf.predict(self.kf_mean, self.kf_covariance)
@@ -476,8 +465,6 @@ class SAM2Base(torch.nn.Module):
                 batch_inds = torch.arange(B, device=device)
                 low_res_masks = low_res_multimasks[batch_inds, best_iou_inds].unsqueeze(1)
                 high_res_masks = high_res_multimasks[batch_inds, best_iou_inds].unsqueeze(1)
-                if sam_output_tokens.size(1) > 1:
-                    sam_output_token = sam_output_tokens[batch_inds, best_iou_inds]
 
                 if False:
                     # make all these on cpu                        
@@ -496,6 +483,8 @@ class SAM2Base(torch.nn.Module):
                     self.stable_frames = 0
                 else:
                     self.kf_mean, self.kf_covariance = self.kf.update(self.kf_mean, self.kf_covariance, self.kf.xyxy_to_xyah(high_res_multibboxes[best_iou_inds]))
+            if sam_output_tokens.size(1) > 1:
+                sam_output_token = sam_output_tokens[batch_inds, best_iou_inds]
         elif multimask_output and not self.samurai_mode:
             # take the best mask prediction (with the highest IoU estimation)
             best_iou_inds = torch.argmax(ious, dim=-1)
