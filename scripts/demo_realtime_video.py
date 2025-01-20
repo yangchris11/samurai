@@ -89,7 +89,7 @@ def main(args):
             for obj_id, mask in mask_to_vis.items():
                 mask_img = np.zeros((height, width, 3), np.uint8)
                 mask_img[mask] = color[(obj_id + 1) % len(color)]
-                frame = cv2.addWeighted(frame, 1, mask_img, 0.2, 0)
+                frame = cv2.addWeighted(frame, 1, mask_img, 0.5, 0)
 
             for obj_id, bbox in bbox_to_vis.items():
                 cv2.rectangle(frame, (bbox[0], bbox[1]), (bbox[0] + bbox[2], bbox[1] + bbox[3]), color[obj_id % len(color)], 2)
@@ -107,7 +107,7 @@ def main(args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--video_path", default="data/videos/aquarium.mp4", help="Input video path or directory of frames.")
-    parser.add_argument("--model_path", default="sam2/checkpoints/sam2.1_hiera_small.pt", help="Path to the model checkpoint.")
+    parser.add_argument("--model_path", default="sam2/checkpoints/sam2.1_hiera_base_plus.pt", help="Path to the model checkpoint.")
     parser.add_argument("--video_output_path", default="demo.mp4", help="Path to save the output video.")
     args = parser.parse_args()
     main(args)

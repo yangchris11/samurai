@@ -24,25 +24,12 @@ class SAM2CameraPredictor(SAM2Base):
         non_overlap_masks=False,
         clear_non_cond_mem_around_input=False,
         clear_non_cond_mem_for_multi_obj=False,
-        # Optional: whether to treat subsequent corrections also as conditioning frames.
-        # If True, the frame that receives new prompts is treated as cond_frame_outputs.
-        # If False, only the initially designated frames are "cond_frame_outputs."
         add_all_frames_to_correct_as_cond=False,
+        # Add a few new thresholds/knobs:
+        memory_score_thr=0.5,
+        max_memory_size=7,
         **kwargs,
     ):
-        """
-        Args:
-          fill_hole_area (int): If >0, fill holes up to this size in predicted masks.
-          non_overlap_masks (bool): Whether to enforce a non-overlapping constraint
-                                    among multiple objects in the final output.
-          clear_non_cond_mem_around_input (bool): If True, after a prompt is added,
-                                                 non-conditioning memory around that
-                                                 frame is cleared (for single-object).
-          clear_non_cond_mem_for_multi_obj (bool): If True, the same clearing behavior
-                                                   applies also for multi-object tracking.
-          add_all_frames_to_correct_as_cond (bool): If True, frames that receive new
-                                                    prompts are considered "conditioning."
-        """
         super().__init__(**kwargs)
         self.fill_hole_area = fill_hole_area
         self.non_overlap_masks = non_overlap_masks
@@ -50,10 +37,11 @@ class SAM2CameraPredictor(SAM2Base):
         self.clear_non_cond_mem_for_multi_obj = clear_non_cond_mem_for_multi_obj
         self.add_all_frames_to_correct_as_cond = add_all_frames_to_correct_as_cond
 
-        # A dictionary holding the entire "inference_state":
-        #   - images
-        #   - feature caches
-        #   - prompts, mask inputs, output dicts, etc.
+        # NEW: threshold to decide whether to store the memory
+        self.memory_score_thr = memory_score_thr
+        # NEW: a maximum capacity for how many frames we'll keep in memory
+        self.max_memory_size = max_memory_size
+
         self.inference_state = None
 
     @torch.inference_mode()
@@ -705,113 +693,159 @@ class SAM2CameraPredictor(SAM2Base):
         consolidate_at_video_res=False,
     ):
         """
-        Consolidate "temp_output_dict_per_obj[frame_idx]" for each object into a
-        single multi-object output. Optionally re-run the memory encoder if needed.
-        Optionally do the consolidation at the original image resolution
-        (e.g., for editing at full res).
+        Same as your original code, but after we produce 'consolidated_out',
+        we do an extra check to skip memory encoding if the score is bad.
         """
         batch_size = self._get_obj_num(inference_state)
         storage_key = "cond_frame_outputs" if is_cond else "non_cond_frame_outputs"
 
         if consolidate_at_video_res:
-            # For immediate user feedback at native resolution
-            assert not run_mem_encoder, "Memory encoder must run at model resolution."
+            assert not run_mem_encoder, "memory encoder cannot run at video resolution"
             consolidated_H = inference_state["video_height"]
             consolidated_W = inference_state["video_width"]
-            mask_key = "pred_masks_video_res"
+            consolidated_mask_key = "pred_masks_video_res"
         else:
             consolidated_H = consolidated_W = self.image_size // 4
-            mask_key = "pred_masks"
+            consolidated_mask_key = "pred_masks"
 
-        # Initialize "consolidated_out" with placeholders
         device = inference_state["device"]
         storage_device = inference_state["storage_device"]
-        shape4 = (batch_size, 1, consolidated_H, consolidated_W)
+
+        # 1) Construct the placeholder
         consolidated_out = {
             "maskmem_features": None,
             "maskmem_pos_enc": None,
-            mask_key: torch.full(
-                shape4,
+            consolidated_mask_key: torch.full(
+                size=(batch_size, 1, consolidated_H, consolidated_W),
                 fill_value=NO_OBJ_SCORE,
                 dtype=torch.float32,
                 device=storage_device,
             ),
             "obj_ptr": torch.full(
-                (batch_size, self.hidden_dim),
-                NO_OBJ_SCORE,
+                size=(batch_size, self.hidden_dim),
+                fill_value=NO_OBJ_SCORE,
                 dtype=torch.float32,
                 device=device,
             ),
             "object_score_logits": torch.full(
-                (batch_size, 1),
-                10.0,  # Logit of +10 => near 1.0 in sigmoids
+                size=(batch_size, 1),
+                fill_value=10.0,  # logit=10 => near prob=1
                 dtype=torch.float32,
                 device=device,
             ),
+            # Optional: if you store e.g. best_iou_score, initialize
+            "best_iou_score": torch.zeros(
+                size=(batch_size,),
+                dtype=torch.float32,
+                device=device
+            ),
         }
 
+        # 2) Merge partial object outputs
         empty_mask_ptr = None
         for obj_idx in range(batch_size):
-            obj_temp_dict = inference_state["temp_output_dict_per_obj"][obj_idx]
-            obj_out_dict = inference_state["output_dict_per_obj"][obj_idx]
-            out = obj_temp_dict[storage_key].get(frame_idx, None)
+            obj_temp_output_dict = inference_state["temp_output_dict_per_obj"][obj_idx]
+            obj_output_dict = inference_state["output_dict_per_obj"][obj_idx]
+            out = obj_temp_output_dict[storage_key].get(frame_idx, None)
             if out is None:
-                out = obj_out_dict["cond_frame_outputs"].get(frame_idx, None)
+                out = obj_output_dict["cond_frame_outputs"].get(frame_idx, None)
             if out is None:
-                out = obj_out_dict["non_cond_frame_outputs"].get(frame_idx, None)
+                out = obj_output_dict["non_cond_frame_outputs"].get(frame_idx, None)
 
             if out is None:
-                # No data for this object => fill with empty pointers if memory is needed
+                # No data => optionally fill with empty pointer
                 if run_mem_encoder:
                     if empty_mask_ptr is None:
                         empty_mask_ptr = self._get_empty_mask_ptr(inference_state, frame_idx)
-                    consolidated_out["obj_ptr"][obj_idx : obj_idx + 1] = empty_mask_ptr
+                    consolidated_out["obj_ptr"][obj_idx : obj_idx+1] = empty_mask_ptr
                 continue
 
-            # Merge the predicted mask from "out" into `consolidated_out`
+            # Merge the predicted mask from "out"
             obj_mask = out["pred_masks"]
-            cons_mask = consolidated_out[mask_key]
-            if obj_mask.shape[-2:] == cons_mask.shape[-2:]:
-                cons_mask[obj_idx : obj_idx + 1] = obj_mask
+            if obj_mask.shape[-2:] == (consolidated_H, consolidated_W):
+                consolidated_out[consolidated_mask_key][obj_idx : obj_idx+1] = obj_mask
             else:
-                # Need to resize
                 resized = torch.nn.functional.interpolate(
                     obj_mask,
-                    size=cons_mask.shape[-2:],
+                    size=(consolidated_H, consolidated_W),
                     mode="bilinear",
                     align_corners=False,
                 )
-                cons_mask[obj_idx : obj_idx + 1] = resized
+                consolidated_out[consolidated_mask_key][obj_idx : obj_idx+1] = resized
 
-            consolidated_out["obj_ptr"][obj_idx : obj_idx + 1] = out["obj_ptr"]
-            consolidated_out["object_score_logits"][obj_idx : obj_idx + 1] = out[
-                "object_score_logits"
-            ]
+            consolidated_out["obj_ptr"][obj_idx : obj_idx+1] = out["obj_ptr"]
+            consolidated_out["object_score_logits"][obj_idx : obj_idx+1] = out["object_score_logits"]
+            # If you have 'best_iou_score' from out, copy it:
+            if "best_iou_score" in out:
+                consolidated_out["best_iou_score"][obj_idx] = out["best_iou_score"]
 
-        # If run_mem_encoder => re-encode memory after possibly applying non-overlap constraint
+        # 3) If we want to do memory encoding, we first decide if the overall
+        #    frame is "good enough" to keep.
         if run_mem_encoder:
-            # Upscale to model resolution
-            hi_res = torch.nn.functional.interpolate(
-                consolidated_out[mask_key].to(device),
-                size=(self.image_size, self.image_size),
-                mode="bilinear",
-                align_corners=False,
-            )
-            if self.non_overlap_masks_for_mem_enc:
-                hi_res = self._apply_non_overlapping_constraints(hi_res)
-            # Actually encode memory
-            maskmem_feats, maskmem_pos = self._run_memory_encoder(
-                inference_state,
-                frame_idx=frame_idx,
-                batch_size=batch_size,
-                high_res_masks=hi_res,
-                object_score_logits=consolidated_out["object_score_logits"],
-                is_mask_from_pts=True,
-            )
-            consolidated_out["maskmem_features"] = maskmem_feats
-            consolidated_out["maskmem_pos_enc"] = maskmem_pos
+            # Evaluate the score across objects.  E.g., if any object is "good," we keep it
+            keep = False
+            # You can make the logic “if any obj passes, keep = True” or “all must pass”.
+            # For simplicity: if *any* object is good:
+            for obj_idx in range(batch_size):
+                # Build a mini slice to pass to your `_decide_if_keep_frame_in_memory`.
+                obj_slice_out = {
+                    "object_score_logits": consolidated_out["object_score_logits"][obj_idx:obj_idx+1],
+                    "best_iou_score": consolidated_out["best_iou_score"][obj_idx:obj_idx+1],
+                }
+                if self._decide_if_keep_frame_in_memory(obj_slice_out):
+                    keep = True
+                    break
+
+            if keep:
+                # Then we run the memory encoder
+                hi_res_masks = torch.nn.functional.interpolate(
+                    consolidated_out[consolidated_mask_key].to(device),
+                    size=(self.image_size, self.image_size),
+                    mode="bilinear",
+                    align_corners=False,
+                )
+                if self.non_overlap_masks_for_mem_enc:
+                    hi_res_masks = self._apply_non_overlapping_constraints(hi_res_masks)
+
+                maskmem_features, maskmem_pos_enc = self._run_memory_encoder(
+                    inference_state,
+                    frame_idx=frame_idx,
+                    batch_size=batch_size,
+                    high_res_masks=hi_res_masks,
+                    object_score_logits=consolidated_out["object_score_logits"],
+                    is_mask_from_pts=True,
+                )
+                consolidated_out["maskmem_features"] = maskmem_features
+                consolidated_out["maskmem_pos_enc"] = maskmem_pos_enc
+            else:
+                # If we skip memory on this frame, we do *not* fill the memory features
+                consolidated_out["maskmem_features"] = None
+                consolidated_out["maskmem_pos_enc"] = None
 
         return consolidated_out
+
+    def _decide_if_keep_frame_in_memory(self, out_dict):
+        """
+        Returns True if we want to store memory for this frame,
+        based on (object score, mask affinity, or motion).
+        For simplicity, we'll check:
+           - out_dict["object_score_logits"] >= 0
+           - out_dict["best_iou_score"] >= memory_score_thr
+        Adjust as needed for your actual motion logic or mask scores.
+        """
+        # Object presence (scalar per object). Suppose shape = (B,1).
+        obj_score = out_dict["object_score_logits"]  # shape (B, 1)
+        # The user might store a best IoU in "best_iou_score", or
+        # you might store a KF-based motion confidence. Let's just do:
+        motion_or_iou_score = out_dict.get("best_iou_score", None)
+        if motion_or_iou_score is None:
+            # If no motion-based score is present, fallback to an average mask logit
+            motion_or_iou_score = obj_score.mean()  # or something else
+
+        # Here we simply check if motion_or_iou_score > threshold, and
+        # also that object score is positive:
+        keep_mask = (obj_score.mean().item() > 0.0) and (motion_or_iou_score.mean() > self.memory_score_thr)
+        return bool(keep_mask)
 
     def _get_empty_mask_ptr(self, inference_state, frame_idx):
         """
@@ -845,8 +879,8 @@ class SAM2CameraPredictor(SAM2Base):
 
     def _add_output_per_object(self, inference_state, frame_idx, current_out, storage_key):
         """
-        Slice out each object's portion of the multi-object output into
-        `output_dict_per_obj[obj_idx][storage_key][frame_idx]`.
+        Same as your original code, but add a post-step that prunes the memory
+        if we exceed self.max_memory_size.
         """
         maskmem_feats = current_out["maskmem_features"]
         maskmem_pos = current_out["maskmem_pos_enc"]
@@ -869,6 +903,19 @@ class SAM2CameraPredictor(SAM2Base):
                 obj_out["maskmem_pos_enc"] = [p[slc] for p in maskmem_pos]
             inference_state["output_dict_per_obj"][obj_idx][storage_key][frame_idx] = obj_out
 
+        # Now prune older frames that we have stored if we exceed max_memory_size
+        mem_dict = inference_state["output_dict"][storage_key]   # e.g. "cond_frame_outputs" or "non_cond_frame_outputs"
+        if len(mem_dict) > self.max_memory_size:
+            # For example, remove the oldest entry
+            sorted_frames = sorted(mem_dict.keys())
+            # pick the oldest
+            oldest_frame = sorted_frames[0]
+            mem_dict.pop(oldest_frame, None)
+
+            # also remove from each object's slice
+            for obj_dict in inference_state["output_dict_per_obj"].values():
+                obj_dict[storage_key].pop(oldest_frame, None)
+
     def _clear_non_cond_mem_around_input(self, inference_state, frame_idx):
         """
         Remove the non-cond memory around a newly prompted frame to avoid confusion
@@ -884,19 +931,20 @@ class SAM2CameraPredictor(SAM2Base):
                 obj_out_dict["non_cond_frame_outputs"].pop(t, None)
 
     def _get_image_feature(self, inference_state, frame_idx, batch_size):
-        """
-        Retrieves (or computes) the backbone feature for a given frame_idx,
-        expands it for `batch_size` objects.
-        """
-        cached = inference_state["cached_features"].get(frame_idx, (None, None))
-        image, backbone_out = cached
-        if backbone_out is None:
-            # Not in cache => compute
+        cached_image, cached_backbone = inference_state["cached_features"].get(frame_idx, (None, None))
+
+        if cached_backbone is None:
+            # compute and store backbone features
             device = inference_state["device"]
-            # Retrieve the N-th frame
-            image = inference_state["images"][frame_idx].to(device).unsqueeze(0).float()
+            image = inference_state["images"][frame_idx].to(device).float().unsqueeze(0)
             backbone_out = self.forward_image(image)
             inference_state["cached_features"][frame_idx] = (image, backbone_out)
+
+            # For a streaming scenario, we might then prune older cache entries
+            self._prune_old_cached_features(inference_state)
+
+        else:
+            image, backbone_out = cached_image, cached_backbone
 
         # Expand for each object
         expanded_image = image.expand(batch_size, -1, -1, -1)
@@ -912,6 +960,14 @@ class SAM2CameraPredictor(SAM2Base):
         # Prepare final
         feats = self._prepare_backbone_features(expanded_bk)
         return (expanded_image,) + feats
+    
+    def _prune_old_cached_features(self, inference_state, max_cache_size=2):
+        if len(inference_state["cached_features"]) > max_cache_size:
+            # remove the oldest frames
+            all_keys = sorted(inference_state["cached_features"].keys())
+            while len(all_keys) > max_cache_size:
+                oldest = all_keys.pop(0)
+                inference_state["cached_features"].pop(oldest, None)
 
     def _run_memory_encoder(
         self, inference_state, frame_idx, batch_size, high_res_masks,
