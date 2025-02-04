@@ -73,6 +73,11 @@ def main(args):
         state = predictor.init_state(frames_or_path, offload_video_to_cpu=True)
         bbox, track_label = prompts[0]
         _, _, masks = predictor.add_new_points_or_box(state, box=bbox, frame_idx=0, obj_id=0)
+        
+        if args.save_masked_to_video:
+            mask_video_path = os.path.join(args.masked_video_output_path)
+            fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+            mask_video_writer = cv2.VideoWriter(mask_video_path, fourcc, 20.0, (width, height))
 
         for frame_idx, object_ids, masks in predictor.propagate_in_video(state):
             mask_to_vis = {}
@@ -93,8 +98,16 @@ def main(args):
 
             if args.save_to_video:
                 img = loaded_frames[frame_idx]
+                if args.save_masked_to_video:
+                    clean_img = img.copy()
+
                 for obj_id, mask in mask_to_vis.items():
                     mask_img = np.zeros((height, width, 3), np.uint8)
+
+                    if args.save_masked_to_video:
+                        clean_mask_img = np.zeros((height, width, 3), np.uint8)
+                        clean_mask_img[mask] = 255
+                        
                     mask_img[mask] = color[(obj_id + 1) % len(color)]
                     img = cv2.addWeighted(img, 1, mask_img, 0.2, 0)
 
@@ -102,9 +115,15 @@ def main(args):
                     cv2.rectangle(img, (bbox[0], bbox[1]), (bbox[0] + bbox[2], bbox[1] + bbox[3]), color[obj_id % len(color)], 2)
 
                 out.write(img)
-
+                
+                if args.save_masked_to_video:
+                    masked_area = cv2.bitwise_and(clean_img, clean_mask_img)
+                    mask_video_writer.write(masked_area)
+            
         if args.save_to_video:
             out.release()
+        if args.save_masked_to_video:
+            mask_video_writer.release()
 
     del predictor, state
     gc.collect()
@@ -118,5 +137,7 @@ if __name__ == "__main__":
     parser.add_argument("--model_path", default="sam2/checkpoints/sam2.1_hiera_base_plus.pt", help="Path to the model checkpoint.")
     parser.add_argument("--video_output_path", default="demo.mp4", help="Path to save the output video.")
     parser.add_argument("--save_to_video", default=True, help="Save results to a video.")
+    parser.add_argument("--save_masked_to_video", default=False, help="Save results to a separate video.")
+    parser.add_argument("--masked_video_output_path", default="masked.mp4", help="Path to save the masked output video.")
     args = parser.parse_args()
     main(args)
