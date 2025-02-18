@@ -26,6 +26,7 @@ All rights are reserved to the copyright owners (TM & © Universal (2019)). This
 ## News
 - [ ] **Incoming**: Support vot-challenge toolkit intergration.
 - [ ] **Incoming**: Release demo script to support inference on video (with mask prompt).
+- [x] **2025/02/18**: Release multi-GPU inference script.
 - [x] **2025/01/27**: Release [inference script](https://github.com/yangchris11/samurai/blob/master/sam2/tools/README.md#samurai-vos-inference) on VOS task (SA-V)!
 - [x] **2024/11/21**: Release [demo script](https://github.com/yangchris11/samurai?tab=readme-ov-file#demo-on-custom-video) to support inference on video (bounding box prompt).
 - [x] **2024/11/20** Release [inference script](https://github.com/yangchris11/samurai?tab=readme-ov-file#main-inference) on VOT task (LaSOT, LaSOT-ext, GOT-10k, UAV123, TrackingNet, OTB100)!
