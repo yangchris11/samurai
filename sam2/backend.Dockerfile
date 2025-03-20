@@ -50,6 +50,10 @@ ADD https://dl.fbaipublicfiles.com/segment_anything_2/092824/sam2.1_hiera_small.
 ADD https://dl.fbaipublicfiles.com/segment_anything_2/092824/sam2.1_hiera_base_plus.pt ${APP_ROOT}/checkpoints/sam2.1_hiera_base_plus.pt
 ADD https://dl.fbaipublicfiles.com/segment_anything_2/092824/sam2.1_hiera_large.pt ${APP_ROOT}/checkpoints/sam2.1_hiera_large.pt
 
+# Create a non-root user and switch to it
+RUN useradd -m nonrootuser
+USER nonrootuser
+
 WORKDIR ${APP_ROOT}/server
 
 # https://pythonspeed.com/articles/gunicorn-in-docker/

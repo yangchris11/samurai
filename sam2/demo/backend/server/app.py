@@ -19,6 +19,10 @@ from data.schema import schema
 from data.store import set_videos
 from flask import Flask, make_response, Request, request, Response, send_from_directory
 from flask_cors import CORS
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
+from flask_httpauth import HTTPBasicAuth
+from flask_talisman import Talisman
 from inference.data_types import PropagateDataResponse, PropagateInVideoRequest
 from inference.multipart import MultipartResponseBuilder
 from inference.predictor import InferenceAPI
@@ -28,12 +32,24 @@ logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 cors = CORS(app, supports_credentials=True)
+limiter = Limiter(get_remote_address, app=app, default_limits=["200 per day", "50 per hour"])
+auth = HTTPBasicAuth()
+talisman = Talisman(app)
 
 videos = preload_data()
 set_videos(videos)
 
 inference_api = InferenceAPI()
 
+users = {
+    "admin": "secret"
+}
+
+@auth.get_password
+def get_pw(username):
+    if username in users:
+        return users.get(username)
+    return None
 
 @app.route("/healthy")
 def healthy() -> Response:
@@ -41,6 +57,8 @@ def healthy() -> Response:
 
 
 @app.route(f"/{GALLERY_PREFIX}/<path:path>", methods=["GET"])
+@auth.login_required
+@limiter.limit("10 per minute")
 def send_gallery_video(path: str) -> Response:
     try:
         return send_from_directory(
@@ -52,6 +70,8 @@ def send_gallery_video(path: str) -> Response:
 
 
 @app.route(f"/{POSTERS_PREFIX}/<path:path>", methods=["GET"])
+@auth.login_required
+@limiter.limit("10 per minute")
 def send_poster_image(path: str) -> Response:
     try:
         return send_from_directory(
@@ -63,6 +83,8 @@ def send_poster_image(path: str) -> Response:
 
 
 @app.route(f"/{UPLOADS_PREFIX}/<path:path>", methods=["GET"])
+@auth.login_required
+@limiter.limit("10 per minute")
 def send_uploaded_video(path: str):
     try:
         return send_from_directory(
@@ -75,8 +97,12 @@ def send_uploaded_video(path: str):
 
 # TOOD: Protect route with ToS permission check
 @app.route("/propagate_in_video", methods=["POST"])
+@auth.login_required
+@limiter.limit("5 per minute")
 def propagate_in_video() -> Response:
     data = request.json
+    if not data or "session_id" not in data or "start_frame_index" not in data:
+        return make_response("Invalid input", 400)
     args = {
         "session_id": data["session_id"],
         "start_frame_index": data.get("start_frame_index", 0),
