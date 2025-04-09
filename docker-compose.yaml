@@ -1,0 +1,21 @@
+version: "3.9"
+
+services:
+  samurai:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: samurai_dev
+    runtime: nvidia  # Enable GPU access
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all  # Expose all GPUs
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility,video
+    volumes:
+      - .:/workspace  # Mount project directory
+    working_dir: /workspace  # Set working directory inside container
+    stdin_open: true  # Keep STDIN open for interactive use
+    tty: true         # Allocate a pseudo-TTY
+    ipc: host         # Share IPC namespace (for performance)
+    ulimits:
+      memlock: -1      # Disable memory locking limits
+      stack: 67108864  # Increase stack size to 64MB
