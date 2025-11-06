@@ -8,7 +8,7 @@ import os
 from setuptools import find_packages, setup
 
 # Package metadata
-NAME = "SAM-2"
+NAME = "SAMURAI"
 VERSION = "1.0"
 DESCRIPTION = "SAM 2: Segment Anything in Images and Videos"
 URL = "https://github.com/facebookresearch/sam2"
