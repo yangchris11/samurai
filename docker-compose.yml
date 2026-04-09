@@ -1,0 +1,36 @@
+services:
+  samurai:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: samurai
+    env_file:
+      - .env
+    environment:
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility,video
+      - SAMURAI_APP_ROOT=/workspace/sam2
+      - SAMURAI_DATA_PATH=/workspace/data/uploads
+    ports:
+      - "7676:8000"
+    volumes:
+      - samurai_data:/workspace/data
+    ipc: host
+    ulimits:
+      memlock: -1
+      stack: 67108864
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+volumes:
+  samurai_data:

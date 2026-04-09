@@ -1,0 +1,1016 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SAMURAI Demo</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: system-ui, sans-serif; background: #0f0f0f; color: #e0e0e0; min-height: 100vh; }
+
+header {
+  padding: 14px 24px;
+  border-bottom: 1px solid #1e1e1e;
+  display: flex; align-items: center; gap: 12px;
+}
+header h1 { font-size: 16px; font-weight: 700; letter-spacing: 1px; }
+header span { font-size: 12px; color: #555; }
+
+.layout {
+  display: grid;
+  grid-template-columns: 300px 1fr;
+  height: calc(100vh - 49px);
+}
+
+/* Sidebar */
+.sidebar {
+  border-right: 1px solid #1e1e1e;
+  padding: 16px;
+  display: flex; flex-direction: column; gap: 14px;
+  overflow-y: auto;
+}
+
+.card {
+  background: #141414;
+  border: 1px solid #222;
+  border-radius: 8px;
+  padding: 14px;
+}
+.card-title {
+  font-size: 11px; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 0.8px;
+  color: #555; margin-bottom: 12px;
+}
+
+/* Drop zone */
+.drop-zone {
+  border: 2px dashed #2a2a2a;
+  border-radius: 6px;
+  padding: 28px 12px;
+  text-align: center;
+  cursor: pointer;
+  transition: border-color 0.2s, background 0.2s;
+}
+.drop-zone:hover, .drop-zone.over {
+  border-color: #4f8ef7;
+  background: rgba(79,142,247,0.04);
+}
+.drop-zone .icon { font-size: 28px; margin-bottom: 8px; }
+.drop-zone p { font-size: 12px; color: #666; line-height: 1.6; }
+.drop-zone p b { color: #ccc; }
+.drop-zone .link { color: #4f8ef7; cursor: pointer; }
+
+input[type=file] { display: none; }
+
+/* Fields */
+.fields { display: flex; gap: 8px; margin-top: 10px; }
+.field { flex: 1; }
+.field label { display: block; font-size: 11px; color: #666; margin-bottom: 3px; }
+.field input {
+  width: 100%;
+  background: #0f0f0f; border: 1px solid #2a2a2a;
+  border-radius: 4px; padding: 5px 8px;
+  color: #e0e0e0; font-size: 12px;
+}
+.field input:focus { outline: none; border-color: #4f8ef7; }
+
+/* Buttons */
+.btn {
+  width: 100%; padding: 8px;
+  border: none; border-radius: 6px;
+  font-size: 13px; font-weight: 500;
+  cursor: pointer; transition: background 0.15s;
+  margin-top: 8px;
+}
+.btn:disabled { opacity: 0.35; cursor: not-allowed; }
+.btn-primary { background: #4f8ef7; color: #fff; }
+.btn-primary:hover:not(:disabled) { background: #3a7de0; }
+.btn-success { background: #27ae60; color: #fff; }
+.btn-success:hover:not(:disabled) { background: #1e8449; }
+.btn-ghost { background: #1e1e1e; color: #999; border: 1px solid #2a2a2a; }
+.btn-ghost:hover:not(:disabled) { background: #252525; color: #ccc; }
+.btn-danger { background: #922b21; color: #fff; }
+.btn-danger:hover:not(:disabled) { background: #7b241c; }
+
+/* Status badge */
+.badge {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 12px; color: #888;
+}
+.dot {
+  width: 7px; height: 7px; border-radius: 50%;
+  background: #333; flex-shrink: 0;
+}
+.dot.green { background: #27ae60; box-shadow: 0 0 5px #27ae60; }
+.dot.blue { background: #4f8ef7; box-shadow: 0 0 5px #4f8ef7; animation: blink 1s infinite; }
+.dot.orange { background: #e67e22; box-shadow: 0 0 5px #e67e22; animation: blink 1s infinite; }
+.dot.red { background: #e74c3c; }
+@keyframes blink { 0%,100%{opacity:1} 50%{opacity:.3} }
+
+/* Log */
+.log {
+  font-family: monospace; font-size: 11px;
+  max-height: 140px; overflow-y: auto; line-height: 1.7;
+}
+.log .ok { color: #27ae60; }
+.log .err { color: #e74c3c; }
+.log .info { color: #4f8ef7; }
+.log .muted { color: #555; }
+
+/* Main */
+.main {
+  padding: 16px;
+  display: flex; flex-direction: column; gap: 14px;
+  overflow-y: auto;
+}
+
+.canvas-card { flex: 0 0 auto; }
+.canvas-wrap {
+  background: #0a0a0a;
+  border-radius: 6px;
+  display: flex; align-items: center; justify-content: center;
+  min-height: 120px;
+  position: relative;
+  overflow: hidden;
+}
+canvas {
+  display: block; max-width: 100%;
+  cursor: crosshair;
+}
+.canvas-placeholder {
+  font-size: 12px; color: #333;
+  text-align: center; padding: 40px;
+}
+
+/* Stats */
+.stats-row { display: flex; gap: 10px; }
+.stat {
+  flex: 1; background: #0f0f0f;
+  border: 1px solid #1e1e1e; border-radius: 6px;
+  padding: 10px; text-align: center;
+}
+.stat-val { font-size: 20px; font-weight: 700; color: #4f8ef7; }
+.stat-lbl { font-size: 10px; color: #555; margin-top: 2px; }
+
+.progress-wrap { background: #0f0f0f; border-radius: 4px; height: 5px; overflow: hidden; margin-top: 10px; }
+.progress-bar { height: 100%; background: linear-gradient(90deg,#4f8ef7,#a855f7); border-radius: 4px; transition: width 0.2s; width: 0%; }
+
+/* Misc */
+.hidden { display: none !important; }
+.divider { height: 1px; background: #1e1e1e; }
+.hint-text { font-size: 11px; color: #555; line-height: 1.6; }
+.hint-text li { margin-left: 14px; margin-bottom: 2px; }
+.box-coords { font-size: 11px; color: #888; font-family: monospace; margin-top: 6px; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>SAMURAI</h1>
+  <span>SAM2 video object tracking demo</span>
+</header>
+
+<div class="layout">
+
+  <!-- Sidebar -->
+  <div class="sidebar">
+
+    <!-- Step 1: Upload -->
+    <div class="card">
+      <div class="card-title">1 — Upload video</div>
+      <div class="drop-zone" id="drop-zone">
+        <div class="icon">🎬</div>
+        <p id="drop-label">Drag & drop <b>MP4 / MOV</b> here<br>or <span class="link" id="browse-link">browse</span></p>
+      </div>
+      <input type="file" id="file-input" accept="video/mp4,video/quicktime">
+      <div class="fields">
+        <div class="field">
+          <label>Start (s)</label>
+          <input type="number" id="start-sec" value="0" min="0" step="0.5" placeholder="0">
+        </div>
+        <div class="field">
+          <label>Duration (s)</label>
+          <input type="number" id="dur-sec" min="0.1" step="0.5" placeholder="full">
+        </div>
+      </div>
+      <div class="progress-wrap hidden" id="upload-progress-wrap" style="margin-top:10px;">
+        <div class="progress-bar" id="upload-progress-bar"></div>
+      </div>
+      <div class="hidden" style="font-size:11px;color:#888;margin-top:6px;" id="upload-status"></div>
+      <button class="btn btn-primary" id="upload-btn" disabled>Upload</button>
+    </div>
+
+    <!-- Step 2: Draw box -->
+    <div class="card hidden" id="prompt-card">
+      <div class="card-title">2 — Draw bounding box</div>
+      <ul class="hint-text">
+        <li>Drag on the canvas to mark the object</li>
+        <li>Set Object ID if tracking multiple objects</li>
+        <li>Hit <b>Track</b> when ready</li>
+      </ul>
+      <div class="fields" style="margin-top:10px;">
+        <div class="field" style="max-width:80px;">
+          <label>Object ID</label>
+          <input type="number" id="object-id" value="1" min="1" step="1">
+        </div>
+        <div class="field" style="max-width:110px;">
+          <label>Frame #</label>
+          <input type="number" id="prompt-frame" value="0" min="0" step="1">
+        </div>
+        <div class="field">
+          <label>Direction</label>
+          <select id="direction" style="width:100%;background:#0f0f0f;border:1px solid #2a2a2a;border-radius:4px;padding:5px 8px;color:#e0e0e0;font-size:12px;">
+            <option value="both">Both</option>
+            <option value="forward">Forward</option>
+            <option value="backward">Backward</option>
+          </select>
+        </div>
+      </div>
+      <div class="box-coords hidden" id="box-coords"></div>
+      <button class="btn btn-success" id="track-btn" disabled>Track</button>
+      <button class="btn btn-ghost" id="clear-btn">Clear box</button>
+    </div>
+
+    <!-- Session status -->
+    <div class="card hidden" id="session-card">
+      <div class="card-title">Session</div>
+      <div class="badge"><div class="dot" id="session-dot"></div><span id="session-text">—</span></div>
+      <div style="margin-top:6px;font-size:11px;color:#444;" id="session-meta"></div>
+      <button class="btn btn-danger hidden" id="reset-btn">Reset</button>
+    </div>
+
+    <div class="divider"></div>
+
+    <!-- Log -->
+    <div class="card" style="flex:1;">
+      <div class="card-title">Log</div>
+      <div class="log" id="log"></div>
+    </div>
+
+  </div>
+
+  <!-- Main -->
+  <div class="main">
+
+    <div class="card canvas-card">
+      <div class="card-title" id="canvas-title">Preview</div>
+      <div class="canvas-wrap" id="canvas-wrap">
+        <div class="canvas-placeholder" id="canvas-placeholder">Upload a video to start</div>
+        <canvas id="canvas" class="hidden"></canvas>
+      </div>
+    </div>
+
+    <div class="card hidden" id="stats-card">
+      <div class="card-title">Propagation</div>
+      <div class="stats-row">
+        <div class="stat"><div class="stat-val" id="stat-frames">0</div><div class="stat-lbl">Frames</div></div>
+        <div class="stat"><div class="stat-val" id="stat-objects">0</div><div class="stat-lbl">Objects</div></div>
+        <div class="stat"><div class="stat-val" id="stat-total">—</div><div class="stat-lbl">Total frames</div></div>
+      </div>
+      <div class="progress-wrap"><div class="progress-bar" id="progress-bar"></div></div>
+      <button class="btn btn-primary hidden" id="render-btn" style="margin-top:10px;">Download Video with Boxes</button>
+      <div class="hidden" style="font-size:11px;color:#888;margin-top:6px;text-align:center;" id="render-status"></div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+const API = 'http://localhost:8000';
+const UPLOAD_CHUNK_SIZE = 1024 * 1024;
+
+// ── State ──────────────────────────────────────────────────────────────────
+const s = {
+  videoId: null, sessionId: null,
+  videoW: 0, videoH: 0, totalFrames: 0, durationSec: 0,
+  uploadStartSec: 0, uploadDurationSec: null,
+  localVideoUrl: null,
+  posterImg: null,
+  previewVideo: null,
+  box: null,           // [x1, y1, x2, y2] video coords
+  frames: [],          // collected TrackingFrameDTO
+  propagating: false,
+};
+
+// ── Drawing state ──────────────────────────────────────────────────────────
+const draw = { active: false, x0: 0, y0: 0, x1: 0, y1: 0 };
+
+// ── Element shortcuts ──────────────────────────────────────────────────────
+const $ = id => document.getElementById(id);
+const canvas = $('canvas');
+const ctx = canvas.getContext('2d');
+
+// ── Logging ────────────────────────────────────────────────────────────────
+function log(msg, type = '') {
+  const el = $('log');
+  const d = document.createElement('div');
+  d.className = type;
+  d.textContent = new Date().toLocaleTimeString('en', { hour12: false }) + '  ' + msg;
+  el.appendChild(d);
+  el.scrollTop = el.scrollHeight;
+}
+
+// ── File selection ─────────────────────────────────────────────────────────
+let file = null;
+$('browse-link').onclick = () => $('file-input').click();
+$('file-input').onchange = e => e.target.files[0] && selectFile(e.target.files[0]);
+
+const dz = $('drop-zone');
+dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('over'); });
+dz.addEventListener('dragleave', () => dz.classList.remove('over'));
+dz.addEventListener('drop', e => {
+  e.preventDefault(); dz.classList.remove('over');
+  const f = e.dataTransfer.files[0];
+  if (f && (f.type === 'video/mp4' || f.type === 'video/quicktime')) selectFile(f);
+  else log('Only MP4 and MOV are supported', 'err');
+});
+
+function selectFile(f) {
+  if (s.localVideoUrl) {
+    URL.revokeObjectURL(s.localVideoUrl);
+  }
+  file = f;
+  s.localVideoUrl = URL.createObjectURL(f);
+  $('drop-label').innerHTML = `<b>${f.name}</b><br><span style="font-size:11px;color:#555">${(f.size/1024/1024).toFixed(1)} MB</span>`;
+  $('upload-btn').disabled = false;
+  log(`Selected: ${f.name}`, 'muted');
+}
+
+// ── Upload ─────────────────────────────────────────────────────────────────
+$('upload-btn').onclick = async () => {
+  if (!file) return;
+  setBtn('upload-btn', 'Uploading…', true);
+  log('Uploading…', 'info');
+  $('upload-progress-wrap').classList.remove('hidden');
+  $('upload-status').classList.remove('hidden');
+  $('upload-progress-bar').style.width = '0%';
+  $('upload-status').textContent = 'Preparing upload…';
+
+  const startSec = parseFloat($('start-sec').value) || 0;
+  const dur = parseFloat($('dur-sec').value);
+
+  try {
+    const initRes = await fetch(`${API}/videos/upload/init`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        filename: file.name,
+        start_sec: startSec,
+        duration_sec: dur > 0 ? dur : null,
+      }),
+    });
+    if (!initRes.ok) throw new Error(await initRes.text());
+    const initData = await initRes.json();
+    const totalChunks = Math.ceil(file.size / UPLOAD_CHUNK_SIZE);
+
+    for (let chunkIndex = 0; chunkIndex < totalChunks; chunkIndex++) {
+      const start = chunkIndex * UPLOAD_CHUNK_SIZE;
+      const end = Math.min(file.size, start + UPLOAD_CHUNK_SIZE);
+      const chunk = file.slice(start, end);
+      const chunkRes = await fetch(`${API}/videos/upload/${initData.upload_id}/chunk/${chunkIndex}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/octet-stream' },
+        body: chunk,
+      });
+      if (!chunkRes.ok) throw new Error(await chunkRes.text());
+
+      const pct = Math.round(((chunkIndex + 1) / totalChunks) * 100);
+      $('upload-progress-bar').style.width = `${pct}%`;
+      $('upload-status').textContent = `Uploading… ${chunkIndex + 1}/${totalChunks} chunks (${pct}%)`;
+    }
+
+    $('upload-status').textContent = 'Finalizing upload…';
+    const completeRes = await fetch(`${API}/videos/upload/${initData.upload_id}/complete`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        filename: file.name,
+        total_chunks: totalChunks,
+        start_sec: startSec,
+        duration_sec: dur > 0 ? dur : null,
+      }),
+    });
+    if (!completeRes.ok) throw new Error(await completeRes.text());
+    const { video } = await completeRes.json();
+
+    s.videoId = video.id;
+    s.videoW = video.width;
+    s.videoH = video.height;
+    s.totalFrames = video.frame_count ?? 0;
+    s.durationSec = video.duration_sec ?? 0;
+    s.uploadStartSec = startSec;
+    s.uploadDurationSec = dur > 0 ? dur : null;
+    $('prompt-frame').max = String(Math.max(0, s.totalFrames - 1));
+    $('prompt-frame').value = '0';
+    log(`Uploaded — ${video.width}×${video.height}, ${video.frame_count} frames`, 'ok');
+
+    await refreshPromptFramePreview();
+    $('prompt-card').classList.remove('hidden');
+    $('session-card').classList.remove('hidden');
+    $('reset-btn').classList.remove('hidden');
+    setSession('', 'Ready to track');
+    $('session-meta').textContent = `${s.videoW}×${s.videoH} · session will be created on Track`;
+    setBtn('upload-btn', 'Upload', false);
+    $('upload-progress-bar').style.width = '100%';
+    $('upload-status').textContent = 'Upload complete';
+    log('Upload complete. Draw a box and press Track.', 'ok');
+  } catch (e) {
+    log(`Upload failed: ${e.message}`, 'err');
+    $('upload-status').textContent = 'Upload failed';
+    setBtn('upload-btn', 'Upload', false);
+  }
+};
+
+// ── Load prompt-frame preview ──────────────────────────────────────────────
+async function ensurePreviewVideo() {
+  const sourceUrl = s.localVideoUrl ?? `${API}/videos/${s.videoId}/stream`;
+  if (s.previewVideo && s.previewVideo.src === sourceUrl) return s.previewVideo;
+
+  const vid = document.createElement('video');
+  vid.src = sourceUrl;
+  vid.crossOrigin = 'anonymous';
+  vid.muted = true;
+  vid.preload = 'auto';
+  vid.playsInline = true;
+
+  await new Promise((resolve, reject) => {
+    vid.onloadedmetadata = resolve;
+    vid.onerror = reject;
+    vid.load();
+  });
+
+  s.previewVideo = vid;
+  return vid;
+}
+
+async function loadPreviewFrame(frameIndex) {
+  const vid = await ensurePreviewVideo();
+  const fps = s.durationSec > 0 && s.totalFrames > 0 ? s.totalFrames / s.durationSec : 30;
+  const clipStartSec = s.localVideoUrl ? s.uploadStartSec : 0;
+  const targetTime = clipStartSec + (frameIndex / Math.max(fps, 0.001));
+
+  if (Math.abs(vid.currentTime - targetTime) > 1e-3 || vid.readyState < 2) {
+  await new Promise((resolve, reject) => {
+    const cleanup = () => {
+      vid.removeEventListener('seeked', onSeeked);
+      vid.removeEventListener('error', onError);
+    };
+    const onSeeked = () => { cleanup(); resolve(); };
+    const onError = () => { cleanup(); reject(new Error('Failed to seek preview frame')); };
+    vid.addEventListener('seeked', onSeeked, { once: true });
+    vid.addEventListener('error', onError, { once: true });
+    vid.currentTime = targetTime;
+  });
+  }
+
+  const frameCanvas = document.createElement('canvas');
+  frameCanvas.width = s.videoW || vid.videoWidth;
+  frameCanvas.height = s.videoH || vid.videoHeight;
+  frameCanvas.getContext('2d').drawImage(vid, 0, 0, frameCanvas.width, frameCanvas.height);
+
+  s.posterImg = frameCanvas;
+  const maxW = $('canvas-wrap').clientWidth || 800;
+  const scale = Math.min(1, maxW / frameCanvas.width);
+  canvas.width = Math.round(frameCanvas.width * scale);
+  canvas.height = Math.round(frameCanvas.height * scale);
+  $('canvas-placeholder').classList.add('hidden');
+  canvas.classList.remove('hidden');
+  $('canvas-title').textContent = `Preview — frame ${frameIndex}`;
+  redraw();
+}
+
+function clearPromptBox() {
+  s.box = null;
+  draw.active = false;
+  $('box-coords').classList.add('hidden');
+  $('track-btn').disabled = true;
+  redraw();
+}
+
+async function refreshPromptFramePreview() {
+  if (!s.videoId) return;
+  const promptFrameIndex = getPromptFrameIndex();
+  clearPromptBox();
+  await loadPreviewFrame(promptFrameIndex);
+}
+
+async function streamPropagation(passDirection, promptFrameIndex, onFrame) {
+  const propRes = await fetch(`${API}/sessions/${s.sessionId}/propagate`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      start_frame_index: promptFrameIndex,
+      direction: passDirection,
+      max_frames: null,
+      close_on_complete: false,
+    }),
+  });
+  if (!propRes.ok) throw new Error(await propRes.text());
+  if (!propRes.body) throw new Error('Empty propagation response body');
+
+  const reader = propRes.body.getReader();
+  const decoder = new TextDecoder();
+  let buf = '';
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buf += decoder.decode(value, { stream: true });
+    const lines = buf.split('\n');
+    buf = lines.pop() ?? '';
+
+    for (const line of lines) {
+      if (!line.trim()) continue;
+      let frame;
+      try { frame = JSON.parse(line); } catch { continue; }
+      if (frame.error) {
+        throw new Error(`${frame.error.type}: ${frame.error.message}`);
+      }
+      onFrame(frame);
+    }
+  }
+
+  const tail = buf.trim();
+  if (!tail) return;
+  const frame = JSON.parse(tail);
+  if (frame.error) {
+    throw new Error(`${frame.error.type}: ${frame.error.message}`);
+  }
+  onFrame(frame);
+}
+
+async function closeSessionIfNeeded() {
+  if (!s.sessionId) return;
+  const sessionId = s.sessionId;
+  s.sessionId = null;
+  await fetch(`${API}/sessions/${sessionId}`, { method: 'DELETE' }).catch(() => {});
+}
+
+// ── Create session ─────────────────────────────────────────────────────────
+async function createSession() {
+  $('session-card').classList.remove('hidden');
+  setSession('blue', 'Creating session…');
+  log('Creating session…', 'info');
+
+  try {
+    const res = await fetch(`${API}/sessions`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ video_id: s.videoId }),
+    });
+    if (!res.ok) throw new Error(await res.text());
+    const data = await res.json();
+    s.sessionId = data.session_id;
+    s.totalFrames = data.num_frames;
+    $('prompt-frame').max = String(Math.max(0, s.totalFrames - 1));
+    getPromptFrameIndex();
+
+    setSession('green', `Session ready`);
+    $('session-meta').textContent = `${s.videoW}×${s.videoH} · ${data.num_frames} frames · ${data.session_id.slice(0,8)}…`;
+    $('stat-total').textContent = data.num_frames;
+    log(`Session: ${data.session_id.slice(0,8)}… (${data.num_frames} frames)`, 'ok');
+  } catch (e) {
+    setSession('red', 'Session failed');
+    log(`Session failed: ${e.message}`, 'err');
+    throw e;
+  }
+}
+
+// ── Canvas drawing ─────────────────────────────────────────────────────────
+function toVideo(cx, cy) {
+  return [ cx / canvas.width * s.videoW, cy / canvas.height * s.videoH ];
+}
+function toCanvas(vx, vy) {
+  return [ vx / s.videoW * canvas.width, vy / s.videoH * canvas.height ];
+}
+
+canvas.addEventListener('mousedown', e => {
+  if (!s.videoId || s.propagating) return;
+  const r = canvas.getBoundingClientRect();
+  draw.active = true;
+  draw.x0 = draw.x1 = e.clientX - r.left;
+  draw.y0 = draw.y1 = e.clientY - r.top;
+  s.box = null;
+  $('track-btn').disabled = true;
+  $('box-coords').classList.add('hidden');
+});
+
+canvas.addEventListener('mousemove', e => {
+  if (!draw.active) return;
+  const r = canvas.getBoundingClientRect();
+  draw.x1 = e.clientX - r.left;
+  draw.y1 = e.clientY - r.top;
+  redraw(); drawDraft();
+});
+
+canvas.addEventListener('mouseup', () => {
+  if (!draw.active) return;
+  draw.active = false;
+  if (Math.abs(draw.x1 - draw.x0) < 5 || Math.abs(draw.y1 - draw.y0) < 5) { redraw(); return; }
+
+  const x1 = Math.min(draw.x0, draw.x1), x2 = Math.max(draw.x0, draw.x1);
+  const y1 = Math.min(draw.y0, draw.y1), y2 = Math.max(draw.y0, draw.y1);
+  const [vx1, vy1] = toVideo(x1, y1);
+  const [vx2, vy2] = toVideo(x2, y2);
+  s.box = [vx1, vy1, vx2, vy2].map(Math.round);
+
+  $('box-coords').textContent = `Box: [${s.box.join(', ')}]`;
+  $('box-coords').classList.remove('hidden');
+  $('track-btn').disabled = false;
+  redraw(); drawBox(x1, y1, x2 - x1, y2 - y1, '#4f8ef7', true);
+  log(`Box set: [${s.box.join(', ')}]`, 'muted');
+});
+
+canvas.addEventListener('mouseleave', () => {
+  if (!draw.active) return;
+  draw.active = false;
+  redraw();
+  if (s.box) drawSavedBox();
+});
+
+function drawDraft() {
+  const x = Math.min(draw.x0, draw.x1), y = Math.min(draw.y0, draw.y1);
+  const w = Math.abs(draw.x1 - draw.x0), h = Math.abs(draw.y1 - draw.y0);
+  ctx.strokeStyle = '#4f8ef7'; ctx.lineWidth = 2;
+  ctx.setLineDash([5, 4]); ctx.strokeRect(x, y, w, h); ctx.setLineDash([]);
+}
+
+function drawBox(x, y, w, h, color, fill = false) {
+  ctx.strokeStyle = color; ctx.lineWidth = 2;
+  ctx.strokeRect(x, y, w, h);
+  if (fill) { ctx.fillStyle = color + '18'; ctx.fillRect(x, y, w, h); }
+}
+
+function drawSavedBox() {
+  if (!s.box) return;
+  const [cx1, cy1] = toCanvas(s.box[0], s.box[1]);
+  const [cx2, cy2] = toCanvas(s.box[2], s.box[3]);
+  drawBox(cx1, cy1, cx2 - cx1, cy2 - cy1, '#4f8ef7', true);
+}
+
+function drawTrail() {
+  const total = s.totalFrames || s.frames.length || 1;
+  for (const frame of s.frames) {
+    const t = frame.frame_index / total;
+    // cyan → orange gradient
+    const r = Math.round(t * 240);
+    const g = Math.round(190 - t * 60);
+    const b = Math.round(240 - t * 240);
+    const color = `rgb(${r},${g},${b})`;
+    for (const obj of frame.objects) {
+      if (!obj.bbox) continue;
+      const { x, y, width, height } = obj.bbox;
+      const [cx, cy] = toCanvas(x, y);
+      const [cx2, cy2] = toCanvas(x + width, y + height);
+      ctx.globalAlpha = 0.55;
+      ctx.strokeStyle = color; ctx.lineWidth = 1.5;
+      ctx.strokeRect(cx, cy, cx2 - cx, cy2 - cy);
+    }
+  }
+  ctx.globalAlpha = 1;
+}
+
+// ── Segmentation mask ───────────────────────────────────────────────────────
+const OBJ_COLORS = [
+  [0, 255, 68], [255, 68, 68], [68, 136, 255],
+  [255, 170, 0], [255, 68, 255], [68, 255, 255],
+];
+
+function decodeCOCORLE(h, w, counts) {
+  const cnts = [];
+  let i = 0;
+  while (i < counts.length) {
+    let v = 0, k = 0, more = true;
+    while (more) {
+      const c = counts.charCodeAt(i++) - 48;
+      v |= (c & 0x1f) << (5 * k++);
+      more = !!(c & 0x20);
+    }
+    const bits = 5 * k;
+    if (v & (1 << (bits - 1))) v |= (-1 << bits);  // sign extension
+    cnts.push(v);
+  }
+  for (let j = 3; j < cnts.length; j++) cnts[j] += cnts[j - 2];  // delta decode
+
+  const mask = new Uint8Array(h * w);
+  let pos = 0;
+  for (let j = 0; j < cnts.length; j++) {
+    if (j & 1) {
+      for (let k = 0; k < cnts[j]; k++) {
+        mask[(pos % h) * w + ((pos / h) | 0)] = 1;
+        pos++;
+      }
+    } else { pos += cnts[j]; }
+  }
+  return mask;
+}
+
+let _mOff = null, _mOffCtx = null;
+
+function drawMask(targetCtx, rleMask, color, alpha, dw, dh) {
+  const [h, w] = rleMask.size;
+  if (!_mOff || _mOff.width !== w || _mOff.height !== h) {
+    _mOff = document.createElement('canvas');
+    _mOff.width = w; _mOff.height = h;
+    _mOffCtx = _mOff.getContext('2d');
+  }
+  const mask = decodeCOCORLE(h, w, rleMask.counts);
+  const imgData = _mOffCtx.createImageData(w, h);
+  const [r, g, b] = color;
+  const a = Math.round(alpha * 255);
+  for (let i = 0; i < mask.length; i++) {
+    if (mask[i]) {
+      imgData.data[i*4]=r; imgData.data[i*4+1]=g;
+      imgData.data[i*4+2]=b; imgData.data[i*4+3]=a;
+    }
+  }
+  _mOffCtx.putImageData(imgData, 0, 0);
+  targetCtx.drawImage(_mOff, 0, 0, dw ?? w, dh ?? h);
+}
+
+function redraw() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  if (s.posterImg) ctx.drawImage(s.posterImg, 0, 0, canvas.width, canvas.height);
+  if (s.frames.length > 0) {
+    // Draw last frame's segmentation masks on preview
+    const last = s.frames[s.frames.length - 1];
+    for (const obj of last.objects) {
+      if (obj.mask) drawMask(ctx, obj.mask, OBJ_COLORS[obj.object_id % OBJ_COLORS.length], 0.45, canvas.width, canvas.height);
+    }
+    drawTrail();
+  }
+  if (s.box && !draw.active) drawSavedBox();
+}
+
+// ── Clear box ──────────────────────────────────────────────────────────────
+$('clear-btn').onclick = () => clearPromptBox();
+
+$('prompt-frame').addEventListener('change', async () => {
+  try {
+    await refreshPromptFramePreview();
+    log(`Preview moved to frame ${$('prompt-frame').value}`, 'muted');
+  } catch (e) {
+    log(`Failed to load frame preview: ${e.message}`, 'err');
+  }
+});
+
+// ── Track ──────────────────────────────────────────────────────────────────
+$('track-btn').onclick = async () => {
+  if (!s.box || !s.videoId) return;
+  const promptFrameIndex = getPromptFrameIndex();
+  const requestedDirection = $('direction').value;
+  const propagationPasses = requestedDirection === 'both'
+    ? ['forward', 'backward']
+    : [requestedDirection];
+  s.propagating = true;
+  s.frames = [];
+  setBtn('track-btn', 'Tracking…', true);
+  $('clear-btn').disabled = true;
+  $('stats-card').classList.remove('hidden');
+  $('stat-frames').textContent = '0';
+  $('stat-objects').textContent = '0';
+  $('progress-bar').style.width = '0%';
+  setSession('orange', 'Propagating…');
+
+  try {
+    if (!s.sessionId) await createSession();
+
+    // Add box prompt on the selected frame
+    log(`Adding box prompt on frame ${promptFrameIndex}…`, 'info');
+    const pRes = await fetch(`${API}/sessions/${s.sessionId}/frames/${promptFrameIndex}/box`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ object_id: parseInt($('object-id').value) || 1, box: s.box }),
+    });
+    if (!pRes.ok) throw new Error(await pRes.text());
+    log('Prompt added, propagating…', 'info');
+
+    const frameMap = new Map();
+    const objIds = new Set();
+    let frameCount = 0;
+
+    for (const passDirection of propagationPasses) {
+      log(`Propagating ${passDirection}…`, 'info');
+      await streamPropagation(passDirection, promptFrameIndex, frame => {
+        frameMap.set(frame.frame_index, frame);
+        s.frames = Array.from(frameMap.values()).sort((a, b) => a.frame_index - b.frame_index);
+        frameCount++;
+        for (const obj of frame.objects) if (obj.bbox) objIds.add(obj.object_id);
+
+        $('stat-frames').textContent = s.frames.length;
+        $('stat-objects').textContent = objIds.size;
+        if (s.totalFrames > 0) {
+          $('progress-bar').style.width = Math.min(100, s.frames.length / s.totalFrames * 100) + '%';
+        }
+        if (frameCount % 15 === 0) redraw();
+      });
+    }
+
+    await closeSessionIfNeeded();
+
+    $('progress-bar').style.width = '100%';
+    redraw();
+    setSession('green', `Done — ${s.frames.length} frames`);
+    log(`Done: ${s.frames.length} unique frames, ${objIds.size} object(s) tracked`, 'ok');
+    $('render-btn').classList.remove('hidden');
+    setSession('', 'Ready to track again');
+    $('session-meta').textContent = `${s.videoW}×${s.videoH} · previous session closed after propagation`;
+  } catch (e) {
+    await closeSessionIfNeeded();
+    setSession('red', 'Tracking failed');
+    log(`Tracking failed: ${e.message}`, 'err');
+  }
+
+  s.propagating = false;
+  setBtn('track-btn', 'Track', false);
+  $('clear-btn').disabled = false;
+};
+
+// ── Render video ───────────────────────────────────────────────────────────
+$('render-btn').onclick = async () => {
+  setBtn('render-btn', 'Rendering…', true);
+  const statusEl = $('render-status');
+  statusEl.classList.remove('hidden');
+  statusEl.textContent = 'Loading video…';
+
+  try {
+    const frameMap = new Map(s.frames.map(f => [f.frame_index, f]));
+    const fps = s.durationSec > 0 ? s.totalFrames / s.durationSec : 30;
+    const lw = Math.max(2, s.videoW / 400);
+    const fs = Math.max(12, s.videoW / 80);
+
+    const rc = document.createElement('canvas');
+    rc.width = s.videoW; rc.height = s.videoH;
+    const rctx = rc.getContext('2d');
+
+    const vid = document.createElement('video');
+    const sourceUrl = s.localVideoUrl ?? `${API}/videos/${s.videoId}/stream`;
+    const startSec = s.localVideoUrl ? s.uploadStartSec : 0;
+    const clipDuration = s.localVideoUrl ? (s.uploadDurationSec ?? s.durationSec) : s.durationSec;
+    vid.src = sourceUrl;
+    vid.crossOrigin = 'anonymous'; vid.muted = true; vid.preload = 'auto';
+    await new Promise((res, rej) => { vid.onloadedmetadata = res; vid.onerror = rej; vid.load(); });
+
+    const endSec = clipDuration > 0
+      ? Math.min(vid.duration || Number.POSITIVE_INFINITY, startSec + clipDuration)
+      : (vid.duration || Number.POSITIVE_INFINITY);
+
+    if (startSec > 0) {
+      await new Promise((res, rej) => {
+        const cleanup = () => {
+          vid.removeEventListener('seeked', onSeeked);
+          vid.removeEventListener('error', onError);
+        };
+        const onSeeked = () => { cleanup(); res(); };
+        const onError = () => { cleanup(); rej(new Error('Failed to seek video')); };
+        vid.addEventListener('seeked', onSeeked, { once: true });
+        vid.addEventListener('error', onError, { once: true });
+        vid.currentTime = startSec;
+      });
+    }
+
+    const mimeType = ['video/webm;codecs=vp9', 'video/webm', 'video/mp4']
+      .find(t => MediaRecorder.isTypeSupported(t)) ?? 'video/webm';
+
+    const stream = rc.captureStream();
+    const recorder = new MediaRecorder(stream, { mimeType });
+    const chunks = [];
+    recorder.ondataavailable = e => { if (e.data.size > 0) chunks.push(e.data); };
+
+    const saved = new Promise(res => {
+      recorder.onstop = () => {
+        const blob = new Blob(chunks, { type: mimeType });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url; a.download = 'tracking_result.webm'; a.click();
+        setTimeout(() => URL.revokeObjectURL(url), 10000);
+        res();
+      };
+    });
+
+    recorder.start(200);
+    statusEl.textContent = 'Rendering…';
+
+    await new Promise(res => {
+      let stopped = false;
+      const stopRecording = () => {
+        if (stopped) return;
+        stopped = true;
+        vid.pause();
+        recorder.stop();
+        res();
+      };
+
+      vid.onended = stopRecording;
+      vid.onplay = () => {
+        function draw() {
+          if (vid.ended || vid.paused) return;
+          if (vid.currentTime >= endSec) {
+            stopRecording();
+            return;
+          }
+
+          const fi = Math.round(Math.max(0, vid.currentTime - startSec) * fps);
+          rctx.drawImage(vid, 0, 0, rc.width, rc.height);
+          const frame = frameMap.get(fi) ?? frameMap.get(fi - 1) ?? frameMap.get(fi + 1);
+          if (frame) {
+            for (const obj of frame.objects) {
+              const col = OBJ_COLORS[obj.object_id % OBJ_COLORS.length];
+              const [r, g, b] = col;
+              const css = `rgb(${r},${g},${b})`;
+              if (obj.mask) drawMask(rctx, obj.mask, col, 0.45);
+              if (obj.bbox) {
+                const { x, y, width, height } = obj.bbox;
+                rctx.strokeStyle = css; rctx.lineWidth = lw;
+                rctx.strokeRect(x, y, width, height);
+                rctx.fillStyle = css; rctx.font = `bold ${fs}px monospace`;
+                rctx.fillText(`#${obj.object_id}`, x + 4, Math.max(y - 4, fs + 2));
+              }
+            }
+          }
+          const denom = Math.max(0.001, endSec - startSec);
+          const pct = Math.round(Math.min(1, Math.max(0, (vid.currentTime - startSec) / denom)) * 100);
+          statusEl.textContent = `Rendering… ${pct}%`;
+          requestAnimationFrame(draw);
+        }
+        requestAnimationFrame(draw);
+      };
+      vid.play();
+    });
+
+    await saved;
+    statusEl.textContent = 'Done — downloading…';
+    log('Video rendered and downloaded', 'ok');
+  } catch (e) {
+    log(`Render failed: ${e.message}`, 'err');
+    statusEl.textContent = 'Render failed';
+  }
+
+  setBtn('render-btn', 'Download Video with Boxes', false);
+};
+
+// ── Reset ──────────────────────────────────────────────────────────────────
+$('reset-btn').onclick = async () => {
+  if (s.sessionId) {
+    try {
+      await fetch(`${API}/sessions/${s.sessionId}`, { method: 'DELETE' });
+      log('Session closed', 'muted');
+    } catch {}
+  }
+  if (s.localVideoUrl) {
+    URL.revokeObjectURL(s.localVideoUrl);
+  }
+  Object.assign(s, {
+    videoId: null, sessionId: null,
+    videoW: 0, videoH: 0, totalFrames: 0, durationSec: 0,
+    uploadStartSec: 0, uploadDurationSec: null, localVideoUrl: null,
+    posterImg: null, previewVideo: null, box: null, frames: [], propagating: false,
+  });
+  $('prompt-frame').value = '0';
+  $('prompt-frame').max = '0';
+  $('render-btn').classList.add('hidden');
+  $('render-status').classList.add('hidden');
+  $('upload-progress-wrap').classList.add('hidden');
+  $('upload-status').classList.add('hidden');
+  $('upload-progress-bar').style.width = '0%';
+  $('upload-status').textContent = '';
+  draw.active = false;
+  canvas.classList.add('hidden');
+  $('canvas-placeholder').classList.remove('hidden');
+  $('canvas-title').textContent = 'Preview';
+  $('prompt-card').classList.add('hidden');
+  $('session-card').classList.add('hidden');
+  $('stats-card').classList.add('hidden');
+  $('box-coords').classList.add('hidden');
+  $('track-btn').disabled = true;
+  $('upload-btn').disabled = true;
+  $('drop-label').innerHTML = 'Drag & drop <b>MP4 / MOV</b> here<br>or <span class="link" id="browse-link">browse</span>';
+  document.getElementById('browse-link').onclick = () => $('file-input').click();
+  $('file-input').value = '';
+  file = null;
+  log('Reset', 'muted');
+};
+
+// ── Helpers ────────────────────────────────────────────────────────────────
+function setBtn(id, text, disabled) {
+  const b = $(id); b.textContent = text; b.disabled = disabled;
+}
+function setSession(dotClass, text) {
+  $('session-dot').className = 'dot ' + dotClass;
+  $('session-text').textContent = text;
+}
+
+function getPromptFrameIndex() {
+  const input = $('prompt-frame');
+  const rawValue = Number.parseInt(input.value, 10);
+  const maxFrame = Math.max(0, (s.totalFrames || 1) - 1);
+  const frameIndex = Number.isFinite(rawValue) ? Math.max(0, Math.min(rawValue, maxFrame)) : 0;
+  input.value = String(frameIndex);
+  return frameIndex;
+}
+
+// Redraw canvas on resize
+new ResizeObserver(() => { if (s.posterImg) { const mw = $('canvas-wrap').clientWidth; const sc = Math.min(1, mw / s.posterImg.width); canvas.width = Math.round(s.posterImg.width * sc); canvas.height = Math.round(s.posterImg.height * sc); redraw(); } }).observe($('canvas-wrap'));
+</script>
+</body>
+</html>

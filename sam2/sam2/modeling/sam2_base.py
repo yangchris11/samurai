@@ -664,9 +664,18 @@ class SAM2Base(torch.nn.Module):
                 valid_indices = [] 
                 if frame_idx > 1:  # Ensure we have previous frames to evaluate
                     for i in range(frame_idx - 1, 1, -1):  # Iterate backwards through previous frames
-                        iou_score = output_dict["non_cond_frame_outputs"][i]["best_iou_score"]  # Get mask affinity score
-                        obj_score = output_dict["non_cond_frame_outputs"][i]["object_score_logits"]  # Get object score
-                        kf_score = output_dict["non_cond_frame_outputs"][i]["kf_score"] if "kf_score" in output_dict["non_cond_frame_outputs"][i] else None  # Get motion score if available
+                        prev_out = output_dict["non_cond_frame_outputs"].get(i)
+                        if prev_out is None:
+                            prev_out = cond_outputs.get(i)
+                        if prev_out is None:
+                            prev_out = unselected_cond_outputs.get(i)
+                        if prev_out is None:
+                            continue
+                        iou_score = prev_out.get("best_iou_score")
+                        obj_score = prev_out.get("object_score_logits")
+                        if iou_score is None or obj_score is None:
+                            continue
+                        kf_score = prev_out["kf_score"] if "kf_score" in prev_out else None  # Get motion score if available
                         # Check if the scores meet the criteria for being a valid index
                         if iou_score.item() > self.memory_bank_iou_threshold and \
                            obj_score.item() > self.memory_bank_obj_score_threshold and \
@@ -682,6 +691,8 @@ class SAM2Base(torch.nn.Module):
                     if idx < -len(valid_indices):  # Skip if index is out of bounds
                         continue
                     out = output_dict["non_cond_frame_outputs"].get(valid_indices[idx], None)  # Get output for the valid index
+                    if out is None:
+                        out = cond_outputs.get(valid_indices[idx], None)
                     if out is None:  # If not found, check unselected outputs
                         out = unselected_cond_outputs.get(valid_indices[idx], None)
                     t_pos_and_prevs.append((t_pos, out))  # Append the temporal position and output to the list
