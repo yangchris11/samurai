@@ -311,7 +311,16 @@ class SAM2VideoPredictor(SAM2Base):
         _, video_res_masks = self._get_orig_video_res_output(
             inference_state, consolidated_out["pred_masks_video_res"]
         )
+        self._wait_for_state_copy(inference_state)
         return frame_idx, obj_ids, video_res_masks
+
+    def _wait_for_state_copy(self, inference_state):
+        """With offload_state_to_cpu=True the prompt frame's mask scores were copied off the GPU with
+        non_blocking=True into reused pinned memory (_run_single_frame_inference), and
+        propagate_in_video_preflight reads that copy on the CPU. Wait for the copy to land first, or a busy
+        GPU lets the merge read stale or zero memory and the track starts from the wrong mask."""
+        if inference_state["storage_device"].type == "cpu" and inference_state["device"].type == "cuda":
+            torch.cuda.synchronize(inference_state["device"])
 
     def add_new_points(self, *args, **kwargs):
         """Deprecated method. Please use `add_new_points_or_box` instead."""
@@ -399,6 +408,7 @@ class SAM2VideoPredictor(SAM2Base):
         _, video_res_masks = self._get_orig_video_res_output(
             inference_state, consolidated_out["pred_masks_video_res"]
         )
+        self._wait_for_state_copy(inference_state)
         return frame_idx, obj_ids, video_res_masks
 
     def _get_orig_video_res_output(self, inference_state, any_res_masks):
